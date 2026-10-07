@@ -1,9 +1,12 @@
 import { Request, Response } from "express";
 import Otp from "../models/otp.model";
+import User from "../models/user.model";
 import { generateOtp, generateOtpExpiry } from "../utils/otp";
 import { ApiError } from "../utils/ApiError";
 import { ApiResponse } from "../utils/ApiResponse";
 import { asyncHandler } from "../utils/asyncHandler";
+import { generateAccessToken, generateRefreshToken } from "../utils/jwt";
+import { setAuthCookies } from "../utils/cookie";
 
 const MAX_OTP_ATTEMPTS = 5;
 
@@ -113,12 +116,31 @@ const verifyOtp = asyncHandler(
 
     await otpRecord.save();
 
+    let user = await User.findOne({
+      where: { phoneNumber },
+    });
+
+    // Create user if this is a new user
+    if (!user) {
+      user = await User.create({ phoneNumber });
+    }
+
+    const accessToken = generateAccessToken(user.id);
+    const refreshToken = generateRefreshToken(user.id);
+
+    setAuthCookies(res, accessToken, refreshToken);
+
     res.status(200).json(
       new ApiResponse(
         true,
         "Your phone number has been verified successfully.",
         {
-          phoneNumber,
+          user: {
+            id: user.id,
+            phoneNumber: user.phoneNumber,
+            role: user.role,
+            status: user.status,
+          },
           verified: true,
         },
       ),

@@ -1,102 +1,121 @@
-// import { RequestHandler } from "express";
-// import jwt from "jsonwebtoken";
+import { RequestHandler } from "express";
+import jwt from "jsonwebtoken";
+import User from "../models/user.model";
+import { env } from "../config/env";
+import { ApiError } from "../utils/ApiError";
 
-// import User from "../models/user.model";
-// import { env } from "../config/env";
-// import { ApiError } from "../utils/ApiError";
+interface AccessTokenPayload {
+  userId: string;
+}
 
-// interface AccessTokenPayload {
-//   userId: string;
-// }
+// ============================================
+// AUTHENTICATION MIDDLEWARE
+// ============================================
 
-// const authMiddleware: RequestHandler = async (req, res, next) => {
-//   try {
-//     // Get token from cookie
-//     let accessToken = req.cookies?.accessToken;
+const authMiddleware: RequestHandler = async (req, res, next) => {
+  try {
+    // Get access token from cookie
+    let accessToken = req.cookies?.accessToken;
 
-//     // --------------------------------
-//     // If cookie doesn't exist,
-//     // get token from Authorization header
-//     // --------------------------------
-//     if (!accessToken) {
-//       const authHeader = req.headers.authorization;
+    // ----------------------------------------
+    // Fallback: Authorization header
+    // ----------------------------------------
 
-//       if (authHeader && authHeader.startsWith("Bearer ")) {
-//         accessToken = authHeader.split(" ")[1];
-//       }
-//     }
+    if (!accessToken) {
+      const authHeader = req.headers.authorization;
 
-//     if (!accessToken) {
-//       throw new ApiError(401, "Access token is required");
-//     }
+      if (authHeader?.startsWith("Bearer ")) {
+        accessToken = authHeader.split(" ")[1];
+      }
+    }
 
-//     // Verify token
-//     const decoded = jwt.verify(
-//       accessToken,
-//       env.jwt.accessTokenSecret,
-//     ) as AccessTokenPayload;
+    // ----------------------------------------
+    // Token required
+    // ----------------------------------------
 
-//     if (!decoded.userId) {
-//       throw new ApiError(401, "Invalid access token");
-//     }
+    if (!accessToken) {
+      throw new ApiError(401, "Access token is required.");
+    }
 
-//     const user = await User.findById(decoded.userId).select(
-//       "_id role isDisabled",
-//     );
+    // ----------------------------------------
+    // Verify access token
+    // ----------------------------------------
 
-//     if (!user) {
-//       throw new ApiError(401, "User not found");
-//     }
+    const decoded = jwt.verify(
+      accessToken,
+      env.jwt.accessTokenSecret,
+    ) as AccessTokenPayload;
 
-//     if (user.isDisabled) {
-//       throw new ApiError(403, "Your account has been disabled");
-//     }
+    if (!decoded.userId) {
+      throw new ApiError(401, "Invalid access token.");
+    }
 
-//     // Attach user to request
-//     req.user = {
-//       userId: user._id.toString(),
-//       role: user.role,
-//     };
+    // ----------------------------------------
+    // Find user
+    // ----------------------------------------
 
-//     next();
-//   } catch (error) {
-//     if (error instanceof ApiError) {
-//       return next(error);
-//     }
+    const user = await User.findByPk(decoded.userId, {
+      attributes: ["id", "phoneNumber", "role", "status"],
+    });
 
-//     return next(new ApiError(401, "Invalid or expired access token"));
-//   }
-// };
+    if (!user) {
+      throw new ApiError(401, "User not found.");
+    }
 
-// const authorizeRoles = (
-//   ...allowedRoles: ("USER" | "ADMIN")[]
-// ): RequestHandler => {
-//   return async (req, res, next) => {
-//     try {
-//       const userId = req.user?.userId;
+    // ----------------------------------------
+    // Check account status
+    // ----------------------------------------
 
-//       if (!userId) {
-//         throw new ApiError(401, "Unauthorized");
-//       }
+    if (user.status === "DISABLED") {
+      throw new ApiError(403, "Your account has been disabled.");
+    }
 
-//       const user = await User.findById(userId).select("role");
+    // ----------------------------------------
+    // Attach user to request
+    // ----------------------------------------
 
-//       if (!user) {
-//         throw new ApiError(401, "User not found");
-//       }
+    req.user = {
+      userId: user.id,
+      role: user.role,
+    };
 
-//       if (!allowedRoles.includes(user.role)) {
-//         throw new ApiError(
-//           403,
-//           "You do not have permission to access this resource",
-//         );
-//       }
+    next();
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return next(error);
+    }
 
-//       next();
-//     } catch (error) {
-//       next(error);
-//     }
-//   };
-// };
+    return next(new ApiError(401, "Invalid or expired access token."));
+  }
+};
 
-// export { authMiddleware, authorizeRoles };
+// ============================================
+// ROLE AUTHORIZATION
+// ============================================
+
+const authorizeRoles = (
+  ...allowedRoles: ("USER" | "OWNER")[]
+): RequestHandler => {
+  return (req, _res, next) => {
+    try {
+      const user = req.user;
+
+      if (!user) {
+        throw new ApiError(401, "Unauthorized.");
+      }
+
+      if (!allowedRoles.includes(user.role)) {
+        throw new ApiError(
+          403,
+          "You do not have permission to access this resource.",
+        );
+      }
+
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
+};
+
+export { authMiddleware, authorizeRoles };

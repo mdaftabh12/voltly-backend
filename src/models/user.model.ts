@@ -8,24 +8,28 @@ import {
 
 import { sequelize } from "../config/database";
 
+
+// USER TYPES
+export type UserRole = "USER" | "OWNER";
+export type UserStatus = "ACTIVE" | "DISABLED";
+
 // ============================================
-// 👤 USER MODEL
+// USER MODEL
 // ============================================
+
 class User extends Model<InferAttributes<User>, InferCreationAttributes<User>> {
   // Primary key
   declare id: CreationOptional<string>;
 
-  // Basic user information
+  // Basic information
   declare phoneNumber: string;
-  declare name: CreationOptional<string>;
-  declare email: CreationOptional<string>;
-  declare gender: CreationOptional<"MALE" | "FEMALE">;
-  declare age: CreationOptional<number>;
-  declare avatar: CreationOptional<string>;
+  declare name: CreationOptional<string | null>;
+  declare email: CreationOptional<string | null>;
+  declare avatar: CreationOptional<string | null>;
 
-  // User access
-  declare role: CreationOptional<"USER" | "OWNER">;
-  declare status: CreationOptional<"ACTIVE" | "DISABLED">;
+  // Access control
+  declare role: CreationOptional<UserRole>;
+  declare status: CreationOptional<UserStatus>;
 
   // Timestamps
   declare readonly createdAt: CreationOptional<Date>;
@@ -33,8 +37,9 @@ class User extends Model<InferAttributes<User>, InferCreationAttributes<User>> {
 }
 
 // ============================================
-// 👤 USER MODEL DEFINITION
+// USER MODEL DEFINITION
 // ============================================
+
 User.init(
   {
     id: {
@@ -43,15 +48,13 @@ User.init(
       primaryKey: true,
     },
 
-    // Mobile number verified through OTP
+    // Phone number verified through OTP
     phoneNumber: {
       type: DataTypes.STRING(20),
       allowNull: false,
       unique: true,
     },
 
-    // Optional profile information
-    // These fields can be completed after registration
     name: {
       type: DataTypes.STRING(100),
       allowNull: true,
@@ -63,30 +66,17 @@ User.init(
       unique: true,
     },
 
-    gender: {
-      type: DataTypes.ENUM("MALE", "FEMALE"),
-      allowNull: true,
-    },
-
-    age: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-    },
-
     avatar: {
       type: DataTypes.STRING(500),
       allowNull: true,
     },
 
-    // USER  → Normal application user
-    // OWNER → User who owns a shop
     role: {
       type: DataTypes.ENUM("USER", "OWNER"),
       allowNull: false,
       defaultValue: "USER",
     },
 
-    // Account status
     status: {
       type: DataTypes.ENUM("ACTIVE", "DISABLED"),
       allowNull: false,
@@ -111,7 +101,6 @@ User.init(
     modelName: "User",
     timestamps: true,
 
-    // DATABASE INDEXES
     indexes: [
       {
         unique: true,
